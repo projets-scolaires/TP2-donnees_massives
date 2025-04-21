@@ -13,6 +13,9 @@ knitr::opts_chunk$set(echo = TRUE)
 #install.packages("glmnet")
 #install.packages("xgboost")
 #install.packages("fastDummies")
+#install.packages("plotROC")
+#install.packages("rpart.plot")
+#install.packages("tree")
 library(tidyverse)
 library(skimr)
 library(dplyr)
@@ -20,13 +23,17 @@ library(readr)
 library(rsample)
 library(knitr)
 library(lubridate)
-library(caret)   # machine learning
+library(caret)
 library(nnet)    # régression multinomiale
 library(onehot)
-library(xgboost) # regressiom multinomiale performante
+library(pROC)
+library(plotROC)
 library(ISLR2)
 library(MASS)
 library(fastDummies)
+library(tree)
+library(rpart)
+library(rpart.plot)
 
 ```
 
@@ -52,16 +59,16 @@ Donc nous allons préter une attention particulière à la colinéarité entre l
 
 
 ```{r importation-du-dataset,include = FALSE}
-#Database<- read.csv("../data/GUIDE_Train.csv")
+Database<- read.csv("../data/GUIDE.csv")
 ```
 
 
 
 ```{r ecriture-du-dataset-de-travail,include=FALSE,eval=FALSE,echo=FALSE}
-#set.seed(2025)  
-#df_subset <- Database %>%
-#sample_n(25000)
-#write_csv(df_subset, "data_subset.csv")
+set.seed(2025)  
+df_subset <- Database %>%
+sample_n(25000)
+write_csv(df_subset, "data_subset.csv")
 ```
 
 
@@ -76,7 +83,7 @@ head(df)
 ```
 
 
-### 1. Méthodologie : 
+### 0. Méthodologie : 
 
 1. A propos des donnees :
 
@@ -92,27 +99,48 @@ head(df)
     
     1.4 gestion des valeurs manquantes ;
     
-2. Visualisations sur l'ensemble de test :
+2. Visualisations sur un sous ensemble échantillonné de manière alléatoire :
 
     2.1 Les diagramme en barres ;
     
-    2.2 
+    2.2 Histogrammes ;
+    
+    2.3 Séries temporelles.
     
     
-3. Regression logistique sur la BD échantillonnée alléatoirement.
+3. Apprentisssage non supervisé.
 
-   3.1 Separation de la BD en (80,20) = (entrainement,test)
+   3.1 Analyse par composantes principales
    
-   3.2. Construction du modèle : Approche **Backward**
+   3.2. Clustering : Méthode des k-means
 
 
-4. Déploiement du modèle sur la BD originale.
+4. Apprentissage supervisé.
 
-     4.1 Préparation des données
+     4.1 Régression logistique :
      
-     4.2 Regression
+       * Creation des modèles Backward, Forward, both
+       
+       * Choix du meilleur modèle par validation croisée
      
-5. Quelques recommandations : 
+     4.2 Arbres de décision
+     
+       * Construction d'un arbre de décision
+       
+       * Élagage de l'arbre et choix des paramètre par validation croisée
+       
+5. Déploiement du meilleur modèle parmi les précédants sur la vrai BD
+
+     5.1 Pré-traitement de la BD
+     
+     5.2 Mise en production
+     
+6. Conclusion :
+
+  6.1 Quelques recommandations 
+  
+  6.2 Pour aller plus loin 
+
      
 
     
@@ -465,7 +493,6 @@ FalsePositive --> negatif
 TruePositive --> positif
 
 ```{r modification-IncidentGrade, include=FALSE}
-library(dplyr)
 
 df <- df %>%
   mutate(
@@ -634,8 +661,9 @@ Analysons les incidents entre le 1er et le 6 juin afin d'dentifier la cause du p
 **Un approche serait de limiter notre étude aux incidents se produisant entre le 16 mai et le 13 juin,
 pour capter le flux de variation et optimiser le  modèle. Mais nous n'allons pas le faire dans le cadre de ce travail.**
 
+### 3. Apprentissage non supervisé
 
-### Analyse par composantes principales.
+#### 3.1 Analyse par composantes principales.
 
 Avant de commencer à batir des modèles sur notre set de données, On va d'abord réduire la dimensionnalité
 pour travailler uniquement avec les variables qui expliquent mieux la variabilité des données. mais comme toutes les colonnes en dehors de Timestamp  sont catégorielles, on va les convertir en numériques.
@@ -671,6 +699,7 @@ df_plus_10     <- df_resume[df_resume$Nb_Valeurs_Distinctes > 10, ]
 
 df_10_et_moins <- df[, df_10_et_moins$Colonne]
 df_plus_10 <- df[,df_plus_10$Colonne]
+
 ```
 
 
@@ -708,7 +737,14 @@ df_encoded <- encode_frequencies(df_plus_10)
 
 df_copie <- cbind(df_onehot, df_encoded)
 df_copie <- df_copie[, sapply(df_copie, is.numeric)]
-df_copie
+
+if ("IncidentGrade_negatif" %in% colnames(df_copie)) {
+  df_copie <- subset(df_copie, select = -IncidentGrade_negatif)
+  df_copie <- df_copie %>%
+  rename(IncidentGrade = IncidentGrade_positif)
+}
+
+glimpse(df_copie) 
 ```
 
 
@@ -717,11 +753,16 @@ df_copie
 
 ```{r PCA}
 #par(mfrow = c(1, 2))
-pr.out <- prcomp(df_copie, scale = TRUE) 
-names(pr.out) 
-biplot(pr.out, scale = 0)
 
-plot(pr.out)
+pr.out <- prcomp(df_copie, scale = TRUE)
+names(pr.out)
+biplot(pr.out, scale = 0, 
+       main = "Biplot des composantes principales",
+       cex.main = 1.5, col.main = "navy")
+
+
+plot(pr.out, main = "Variance expliquée par les composantes principales")
+
 ```
 
 ```{r visualisation PCA}
@@ -743,10 +784,11 @@ plot(cumsum(pve), xlab = "Composante Principale",
 
 Avec 20 composantes principales, on es capable d'expliquer environ 90% de la variabilité des observations.
 
-### Méthode des k-means
+#### 3.2 : Clustering --> Méthode des k-means
 
 ```{r diagramme-ebouli}
 set.seed(2025)
+wss=c()
 for (k in 1:15) {
   km <- kmeans(df_copie, centers = k, nstart = 20)
   wss[k] <- km$tot.withinss
@@ -780,111 +822,232 @@ km.out <- kmeans(df_copie, 3, nstart = 30)
 km.out$size
 ```
 On ne peut pas visualiser les cluster à cause de la dimensionnalité. Mais nous pouvons quand meme remarquer 
-qu'il y a trois groupes différents ayant pour taimmes respectives 15520 observations, 5465 observations et 4015 observations.
+qu'il y a trois groupes différents ayant pour taimmes respectives `r km.out$size[1]` observations, `r km.out$size[2]` observations et `r km.out$size[3]` observations.
 
 Il est possibles que ces groupes correspondent aux transaction frauduleuses, non frauduleuses et pas encore classifiées (on ne peut pas encore se prononcer sur la cardinalité de chaque ensemble)
 
-###  Regression logistique
 
-```{r binarisation-variable-cible, include=FALSE}
-df$IncidentGrade <- ifelse(df$IncidentGrade == "positif", 1, 0)
+### 4.  Apprentissage supervisé
+
+#### 4.1 Regression logistique
+
+Cette partie est inspirée de la page suivante : 
+
+**https://stackoverflow.com/questions/53654193/how-to-generate-confusion-matrix-on-hold-out-sample-in-caret-xgbdart**
+
+La variable cible étant incident grade, nous allons supprimer les colonnes 'IncidentGrade_negatif' pour éviter la 
+colinéarité et prédire 'IncidentGrade_positif' .
+
+
+
+```{r choix-meilleur-modele-logistique-cv, warning=FALSE}
+
+if (!is.factor(df_copie$IncidentGrade)) {
+  df_copie$IncidentGrade <- factor(df_copie$IncidentGrade, levels = c(0, 1), labels = c("negatif", "positif"))
+}
+
+
+modele_complet <- glm(IncidentGrade ~ ., data = df_copie, family = binomial)
+modele_nul <- glm(IncidentGrade ~ 1, data = df_copie, family = binomial)
+
+backward_ <- stepAIC(modele_complet, direction = "backward", trace = 0)
+forward_ <- stepAIC(modele_nul, 
+                         scope = list(lower = formula(modele_nul), upper = formula(modele_complet)),
+                         direction = "forward", trace = 0)
+both_ <- stepAIC(modele_complet, direction = "both", trace = 0)
+
+
+entrainement <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3,
+  savePredictions = TRUE,
+  classProbs = TRUE,
+  summaryFunction = defaultSummary
+)
+
+
+modeles <- list(
+  backward = train(formula(backward_), 
+                   data = df_copie,
+                   method = "glm",
+                   family = binomial,
+                   trControl = entrainement),
+  
+  forward = train(formula(forward_), 
+                  data = df_copie,
+                  method = "glm",
+                  family = binomial,
+                  trControl = entrainement),
+  
+  both = train(formula(both_), 
+               data = df_copie,
+               method = "glm",
+               family = binomial,
+               trControl = entrainement)
+  )
+
+
+resultats <- resamples(modeles)
+summary(resultats)
+bwplot(resultats)
+
+performances <- sapply(modeles, function(x) mean(x$results$Accuracy))
+meilleur_nom <- names(which.max(performances))
+meilleur_modele_logistique <- modeles[[meilleur_nom]]
+
+cat("\n MEILLEUR MODÈLE ")
+cat("\n Méthode :", meilleur_nom)
+cat("\nAccuracy moyen :", round(mean(meilleur_modele_logistique$results$Accuracy), 3))
+
+
+pred <- meilleur_modele_logistique$pred
+#pred <- pred[pred$Resample == pred$Resample[1], ]
+
+cat("\n Statistiques de classification (confusion matrix) :\n")
+print(confusionMatrix(pred$pred, pred$obs))
+
+
+```
+
+```{r coefficient-meilleur-modele}
+
+variables_selectionnees <- all.vars(formula(meilleur_modele_logistique)[-1])
+print(variables_selectionnees)
+
+cat("log(odds) = ", 
+    coef(meilleur_modele_logistique)[1], 
+    paste0(sprintf(" + %.3f*%s", 
+                  coef(meilleur_modele_logistique)[-1], 
+                  names(coef(meilleur_modele_logistique)[-1])), 
+          collapse = ""))
+
+
+```
+
+
+le code suivant a été inspiré de stack overflow. voici le lien vers la reférence :
+
+**https://stackoverflow.com/questions/71516298/why-is-geom-roc-from-ggplot-vs-plot-roc-giving-such-drastic-difference-in-roc** 
+
+```{r courbe-roc-logistique}
+
+pred_prob <- predict(meilleur_modele_logistique,  df_copie, type = "prob")[, 2]
+
+roc_obj <- roc(df_copie$IncidentGrade, pred_prob,
+               levels = levels(df_copie$IncidentGrade), 
+               direction = "<")              
+
+ggplot() +
+  geom_roc(aes(m = pred_prob, d = as.numeric(df_copie$IncidentGrade)-1), 
+           labels = FALSE) +
+  style_roc(theme = theme_minimal) +
+  annotate("text", x = 0.75, y = 0.25, 
+           label = paste("AUC =", round(auc(roc_obj), 3)))+
+  style_roc()
+
+
+```
+Interprétation : La courbe est largement au dessus de la diagonale. Ce qui signifie que notre modèle est performent.
+
+
+#### 4.2  Arbre de classification
+
+
+
+
+```{r  arbre-de-classiffication}
+# Nettoyage des noms de colonnes pour enlever les espaces
+names(df_copie) <- make.names(names(df_copie))
+
+if (!is.factor(df_copie$IncidentGrade)) {
+  df_copie$IncidentGrade <- factor(df_copie$IncidentGrade)
+}
+
+
+arbre <- tree(IncidentGrade ~ ., data = df_copie)
+
+set.seed(2025)
+cv_resultats <- cv.tree(arbre, FUN = prune.misclass)
+
+print(cv_resultats)
+plot(cv_resultats$size, cv_resultats$dev, type = "b",
+     xlab = "Taille de l’arbre", ylab = "Erreur de classification",
+     main = "Validation croisée")
+
+taille_opt <- cv_resultats$size[which.min(cv_resultats$dev)]
+
+arbre_elague <- prune.misclass(arbre, best = taille_opt)
+
+
+# Prédictions sur tout le jeu
+pred <- predict(arbre_elague, newdata = df_copie, type = "class")
+
+# Matrice de confusion et précision
+confusion <- table(Prediction = pred, Réel = df_copie$IncidentGrade)
+print(confusion)
+accuracy <- mean(pred == df_copie$IncidentGrade)
+
+summary(arbre_elague)
+
+
+```
+
+
+```{r construction-arbre}
+
+plot(arbre_elague)
+text(arbre_elague, pretty = 0)
+```
+```{r courbe-ROC-arbre}
+#Aidé par ChatGPT
+pred_prob <- predict(arbre_elague, newdata = df_copie, type = "vector")[, 2]
+
+roc_curve <- roc(df_copie$IncidentGrade, pred_prob)
+
+plot(roc_curve, legacy.axes = TRUE, main = "Courbe ROC", col = "blue", lwd = 2,
+     xlab = "Taux de faux positifs (FPR)", ylab = "Taux de vrais positifs (TPR)")
+
+auc_value <- auc(roc_curve)
+text(0.6, 0.2, labels = paste("AUC = ", round(auc_value, 2)), col = "red", cex = 1.2)
+
 
 ```
 
 
 
+### 5 Mise en production.
 
-```{r regression-logistique,eval=FALSE}
-
-glm.fits <- glm(IncidentGrade ~. , data = df , family = binomial)
-summary(glm.fits)
-
-```
+#### 5.1  Choix du modèle
 
 
 
-**interpretation**: 
+En comparant les courbes ROC des modèles ci-dessus définis, il ressort que l'arbre de décision élagué est le meilleur, avec un AUC de **`r round(auc_value, 2)`**
 
-Les variables Timestamp, RegistryKey et Usage sont statistiquement significatives.
+C'est donc ce modèle que nous allons déployer sur la vrai base de données
 
-* Intercept (131.201) --> lorsqu'aucune des variables explicatives n'est prise en compte, IncidentGrade a une forte tendance à être considéré comme frauduleux .
-
-* Timestamp = -0.006913 (p = 0.006) --> à mesure que le temps passe, les incident ont moins tendance à être catégorisés 
-comme suspectes. Cet effet est statistiquement significatif.
-
-* RegistryKey = 0.304977 (p = 0.027) --> certaines valeurs de RegistryKey augmentent les chances d’un incident frauduleux par rapport à une catégorie de référence. 
-
-Une Piste est de regarder individuellement toutes les clés qui N'ont été utiliséee qu'une seule fois.
-
-```{r registryKey}
-Registry_counts <- df %>%
-  count(RegistryKey, name = "Count") %>%
-  arrange(desc(Count))
-t(Registry_counts)%>%
-  kable()
- 
-```
+Avant de déployer le modèle, on doit d'abord préparer la base de données.
 
 
-* Usage (-0.071423) : Cela pourrait signifier que plus une ressource (Usage) est utilisée, moins elle est associée à un incident de type frauduleux.  
+### Pré traitement de la Base des données : 
+
+```{r Preparation-base-donnee, eval=FALSE,include=FALSE}
+col_a_supprimer = c("Id", "OrgId" ,"IncidentId","AlertId","DetectorId" ,
+                    "DeviceId","AccountSid","AccountObjectId",
+                    "NetworkMessageId","EmailClusterId","ApplicationId",
+                    "OAuthApplicationId","ResourceIdName", "ActionGrouped", 
+                    "ActionGranular", "ResourceType","ThreatFamily",
+                    "AntispamDirection", "Roles")
+for (col in  col_a_supprimer){
+  Database[[col]] <- NULL
+}
+
+Database$SuspicionLevel[is.na(Database$SuspicionLevel)] <- "Not Suspicious"
+Database$LastVerdict[is.na(Database$LastVerdict)] <- "Pending Analysis"
+Database$MitreTechniques[is.na(Database$MitreTechniques)] <- "Unknown"
 
 
-
-```{r precidion-du-modele,eval=FALSE}
-glm.fits <- glm(IncidentGrade ~ Timestamp + RegistryKey + Usage, 
-                data = df_train, 
-                family = binomial)
-summary(glm.fits)
-glm.props <- predict(glm.fits, df_train, type =  "response")
-glm.pred <- ifelse(glm.props > 0.4, "Frauduleux", "Non Frauduleux")
-IncidentGrade_train <- ifelse(df_train$IncidentGrade == 1, "Frauduleux", "Non Frauduleux")
-table(glm.pred,IncidentGrade_train)
-precision <- mean(glm.pred == IncidentGrade_train)
-cat("La précision du modèle est : ", round(precision, 2))
-
-```
-
-
-La precision est  de 64 %  --> , Le modèle que nous venons de construire
-est utile. nous allons maintenant le tester sur les données de test.
-
-
-```{r tester-le-modele,eval=FALSE}
-
-df_test$RegistryKey = as.integer(df_test$RegistryKey) 
-df_test$Usage = as.integer(df_test$Usage) 
-
-glm.props_test <- predict(glm.fits, df_test, type =  "response")
-glm.pred_test <- ifelse(glm.props_test > 0.4, "Frauduleux", "Non Frauduleux")
-
-IncidentGrade_test <- ifelse(df_test$IncidentGrade == 1, "Frauduleux", "Non Frauduleux")
-table(glm.pred_test, IncidentGrade_test)
-precision_test <- mean(glm.pred_test == IncidentGrade_test)
-cat("\n Précision du modèle sur les données de test : ", round(precision_test, 2))
-
-```
-
-* Interpretation : le modèle a la même précision de 64% pour les données de test : 
-
-C'est un bon modèle, il peut être déployé
-
-
-## 4 Modèle Batit sur la vrai base de données au complet.
-
-```{r deploiement-du-modele,eval=FALSE}
-# On selectionne les colonnes utiles
- 
-df <- Database[, c("Timestamp", "RegistryKey", "Usage", "IncidentGrade")]
-#On prepare les données sous la base de tout ce qui est dejà connu plus haut
-
-
-df$Timestamp <- as.Date(df$Timestamp, format = "%Y-%m-%d")
-
-df$RegistryKey = as.factor(df$RegistryKey)
-df$IncidentGrade = as.factor(df$IncidentGrade) 
-df$Usage = as.factor(df$Usage) 
-
-df <- df %>%
+Database <- Database %>%
   mutate(
     IncidentGrade = case_when(
       IncidentGrade == "BenignPositive" ~ "negatif",
@@ -892,31 +1055,127 @@ df <- df %>%
       IncidentGrade == "TruePositive" ~ "positif"
     )
   )
-df$IncidentGrade <- ifelse(df$IncidentGrade == "positif", 1, 0)
 
 
+data1 <- Database[, colnames(df_10_et_moins)]
+data_onehot <- dummy_cols(data1, remove_first_dummy = FALSE, remove_selected_columns = TRUE)
 
-# La suite du code ne compile pas il nous faudrait un super calculateur.
+data2 <- Database[, colnames(df_plus_10)]
+data_encoded <- encode_frequencies(data2)
 
-#message d'erreur : Notre ordinateur n'a pas assez de memoire pour allouer 30.8 GO
 
-# On effectue maintenant le test
+data <- cbind(data_onehot, data_encoded)
+data <- data[, sapply(data, is.numeric)]
 
-#glm.fits <- glm(IncidentGrade ~ Timestamp + RegistryKey + Usage, 
-          #      data = df, 
-           #     family = binomial)
-#summary(glm.fits)
-#glm.props <- predict(glm.fits, df, type =  "response")
-#glm.pred <- ifelse(glm.props > 0.4, "Frauduleux", "Non Frauduleux")
-#IncidentGrade <- ifelse(df$IncidentGrade == 1, "Frauduleux", "Non Frauduleux")
-#table(glm.pred,IncidentGrade)
-#precision <- mean(glm.pred == IncidentGrade)
-#cat("La précision du modèle est : ", round(precision, 2))
+if ("IncidentGrade_negatif" %in% colnames(data)) {
+  data <- subset(data, select = -IncidentGrade_negatif)
+  data <- data %>%
+  rename(IncidentGrade = IncidentGrade_positif)
+}
+
+
+if (!is.factor(data$IncidentGrade_NA)) {
+  data$IncidentGrade <- factor(data$IncidentGrade_NA, levels = c(0, 1), labels = c("negatif", "positif"))
+  data <- subset(data, select = -IncidentGrade_NA)
+}
+
+glimpse(data)
+
+```
+```{r preparation-des-donnees-2}
+
+col_a_supprimer <- c("Id", "OrgId" ,"IncidentId","AlertId","DetectorId" ,
+                     "DeviceId","AccountSid","AccountObjectId",
+                     "NetworkMessageId","EmailClusterId","ApplicationId",
+                     "OAuthApplicationId","ResourceIdName", "ActionGrouped", 
+                     "ActionGranular", "ResourceType","ThreatFamily",
+                     "AntispamDirection", "Roles")
+Database <- Database[, !(names(Database) %in% col_a_supprimer)]
+
+Database$SuspicionLevel[is.na(Database$SuspicionLevel)] <- "Not Suspicious"
+Database$LastVerdict[is.na(Database$LastVerdict)] <- "Pending Analysis"
+Database$MitreTechniques[is.na(Database$MitreTechniques)] <- "Unknown"
+
+
+Database <- Database %>%
+  mutate(
+    IncidentGrade = case_when(
+      IncidentGrade == "BenignPositive" ~ "negatif",
+      IncidentGrade == "FalsePositive" ~ "negatif",
+      IncidentGrade == "TruePositive" ~ "positif",
+      TRUE ~ NA_character_
+    )
+  )
+
+cat_vars <- sapply(Database, is.character) | sapply(Database, is.factor)
+categorical_df <- Database[, cat_vars]
+
+
+nb_modalites <- sapply(categorical_df, function(x) length(unique(x)))
+
+df_10_et_moins <- categorical_df[, nb_modalites <= 10]
+df_plus_10 <- categorical_df[, nb_modalites > 10]
+
+
+if (ncol(df_10_et_moins) > 0) {
+  data_onehot <- dummy_cols(df_10_et_moins, remove_first_dummy = FALSE, remove_selected_columns = TRUE)
+} else {
+  data_onehot <- data.frame()
+  warning("Aucune variable avec ≤10 modalités.")
+}
+
+encode_frequencies <- function(df) {
+  for (col in names(df)) {
+    freq_table <- table(df[[col]]) / nrow(df)
+    df[[col]] <- as.numeric(freq_table[df[[col]]])
+  }
+  return(df)
+}
+
+if (ncol(df_plus_10) > 0) {
+  data_encoded <- encode_frequencies(df_plus_10)
+} else {
+  data_encoded <- data.frame()
+  warning("Aucune variable avec >10 modalités.")
+}
+
+
+data <- cbind(data_onehot, data_encoded)
+
+data <- data[, sapply(data, is.numeric)]
+
+# Nettoyage IncidentGrade (OneHot → variable cible)
+if ("IncidentGrade_negatif" %in% colnames(data)) {
+  data <- subset(data, select = -IncidentGrade_negatif)
+  data <- data %>% rename(IncidentGrade = IncidentGrade_positif)
+}
+
+if ("IncidentGrade_NA" %in% colnames(data)) {
+  data$IncidentGrade <- factor(data$IncidentGrade_NA, levels = c(0, 1), labels = c("negatif", "positif"))
+  data <- subset(data, select = -IncidentGrade_NA)
+}
+
+glimpse(data)
 
 ```
 
 
-## Quelques recommandations  : 
+```{r  deploiement-du-modele-choisit, include=FALSE, eval=FALSE}
+predictions_reelles <- predict(arbre_elague, newdata = data, type = "class")
+
+# Matrice de confusion et précision
+confusion <- table(Prediction = predictions_reelles, Réel = data$IncidentGrade)
+print(confusion)
+accuracy <- mean(prediction == data$IncidentGrade)
+
+confusion 
+glimpse(df_copie)
+```
+
+
+### 6.   Conclusion
+
+#### 6.1 Quelques recommandations  : 
 
 1. Engager d'avantages des spécialistes en cibersécurité et former le personnel ;
 
@@ -944,3 +1203,15 @@ transactions_suspectes %>%
   kable()
 #La totalité sera fournies en fichier annexe nommé opérations suspectes
 ```
+
+
+#### 6.2 Aller plus loin
+
+Pour améliorer la qualité de ce travail, il serait important de se doter d'un super calculateur
+afin de pouvoir bénéficier des différentes ressources qui on conditionné certains de nos choix dans le cadre de ce travail.
+
+On a aussi remarqué qu'il y a beaucoup de lignes de codes qui se repetaient et 
+des opération qui étaient faites à la fois sur la base de données échantillonnée et sur la 
+vrai base des données lors de la mise en production. Une bonne pratique sera aussi de créer les fonctions pour 
+ces traitements et de les intégrer dans un pipeline afin d'automatiser les traitements dans le futur.
+
