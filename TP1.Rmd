@@ -1,5 +1,5 @@
 ---
-title: "tp2"
+title: "tp1"
 author: "GroupeB"
 date: "`r Sys.Date()`"
 output: html_document
@@ -17,7 +17,6 @@ knitr::opts_chunk$set(echo = TRUE)
 #install.packages("rpart.plot")
 #install.packages("tree")
 library(tidyverse)
-library(car)
 library(skimr)
 library(dplyr)
 library(readr)
@@ -47,25 +46,7 @@ file.exists("plot_distribution.R")
 
 ## Introduction : 
 
-Dans un contexte où les menaces informatiques se multiplient et évoluent rapidement, les centres d’opérations de sécurité (SOC) doivent être en mesure de détecter, classifier et répondre efficacement aux incidents de cybersécurité. Pour renforcer ces capacités, Microsoft a développé la base de données GUIDE, la plus vaste collection publique d’incidents réels de sécurité à ce jour. Mise en place dans le cadre du développement du Copilot for Security Guided Response (CGR), cette base vise à améliorer l’enquête, le triage et l’assainissement des incidents de sécurité.
-
-L’analyse de cette base de données permet de dégager des tendances et des modèles susceptibles d’aider les analystes SOC à prioriser les alertes et à identifier les menaces les plus critiques. Dans ce projet, nous proposons d’explorer plusieurs hypothèses statistiques afin de mieux comprendre les facteurs associés aux niveaux de risque et aux verdicts finaux attribués aux incidents.
-
-Les hypothèses principales testées sont les suivantes :
-
-H1 : Le niveau de suspicion (SuspicionLevel_Suspicious) est positivement associé à la probabilité qu’un verdict soit classé comme malicieux (LastVerdict_Malicious).
-
-H2 : Il existe une différence significative dans le niveau d’incident (IncidentGrade) selon que l’utilisation soit privée ou publique (Usage_Private vs Usage_Public).
-
-H3 : Certaines familles de systèmes d’exploitation (OSFamily) sont plus fréquemment associées à des incidents classés comme malveillants.
-
-H4 : La répartition géographique des incidents (pays, États, villes) influence la fréquence ou la gravité des menaces détectées.
-
-
-
-Ces hypothèses serviront de fondement à une série d’analyses statistiques et de modélisations, avec pour objectif ultime de dégager des pistes concrètes pour optimiser les outils d’aide à la décision des analystes SOC.
-
-
+Dans un contexte où les menaces informatiques se multiplient et évoluent rapidement, les centres d’opérations de sécurité (SOC) doivent être en mesure de détecter, classifier et répondre efficacement aux incidents de cybersécurité. Pour améliorer ces processus, Microsoft a développé la base de données GUIDE, qui constitue la plus grande collection publique d'incidents réels de sécurité. Cette base de données a été mise en place dans le cadre du développement du Copilot for Security Guided Response (CGR) et a pour objectif principal d’améliorer l’enquête, le triage et l’assainissement des incidents de sécurité.
 
 **Problème rencontré :** La base de donnée fournie a **4147992** observations et 46 variables, soit 45 potentielles variables explicatives. Ceci a soulevé deux problèmes majeurs dans le cadre de notre travail :
 
@@ -104,7 +85,7 @@ head(df)
 
 ### 0. Méthodologie : 
 
-1. Prétraitement des données :
+1. A propos des donnees :
 
     1.1 importation et source des données (À propos de l'auteur) ;
     
@@ -114,59 +95,56 @@ head(df)
       
       * Variables explicatives
       
-    1.3 Nettoyage de la base des donnée ;
+    1.3 Gestion des valeurs manquantes ;
+    
+    1.4 gestion des valeurs manquantes ;
+    
+2. Visualisations sur un sous ensemble échantillonné de manière alléatoire :
+
+    2.1 Les diagramme en barres ;
+    
+    2.2 Histogrammes ;
+    
+    2.3 Séries temporelles.
     
     
-2.Analyse exploratoire des données :
+3. Apprentisssage non supervisé.
+
+   3.1 Analyse par composantes principales
    
-    2.1 Visualisations : Diagrammes de comparaison
-
-      * Les diagramme en barres ;
-    
-      * Histogrammes ;
-    
-      * Séries temporelles.
-      
-   2.2 Test d'hypothèse
-    
-    
-   2.3 Apprentisssage non supervisé sur un échantillon alléeatoire.
-
-    2.3.1 Analyse par composantes principales
-   
-    2.3.2 Clustering : Méthode des k-means
+   3.2. Clustering : Méthode des k-means
 
 
+4. Apprentissage supervisé.
 
-3. Modélisation prédictive.
-
-     3.1 Régression logistique :
+     4.1 Régression logistique :
      
        * Creation des modèles Backward, Forward, both
        
        * Choix du meilleur modèle par validation croisée
      
-     3.2 Arbres de décision
+     4.2 Arbres de décision
      
        * Construction d'un arbre de décision
        
        * Élagage de l'arbre et choix des paramètre par validation croisée
        
+5. Déploiement du meilleur modèle parmi les précédants sur la vrai BD
 
-4. Mise en production
-
+     5.1 Pré-traitement de la BD
      
+     5.2 Mise en production
      
-5. Conclusion :
+6. Conclusion :
 
-  5.1 Quelques recommandations basées sur l'étude 
+  6.1 Quelques recommandations 
   
-  5.2 Pour aller plus loin 
+  6.2 Pour aller plus loin 
 
      
 
     
-### 1. Prétraitement des données
+### 1. A propos des donnees
 
 ####  1.1 À propos de l'auteur ;
 
@@ -174,15 +152,15 @@ Cette base de données est accessible en libre téléchargement via kagle(https:
 
 Les auteurs sont : 
 
-*Microsoft (Propriétaire)*
+Microsoft (Propriétaire)
 
-*Scott Freitas (Administrateur)*
+Scott Freitas (Administrateur)
 
-*amirh gharib (Editeur)*
+amirh gharib (Editeur)
 
-*Rob McCann (Editeur)*
+Rob McCann (Editeur)
 
-*Jovan Kalajdjieski (Editeur).*
+Jovan Kalajdjieski (Editeur).
 
 cette base englobe plus de 13 millions d'éléments de preuve sur 33 types d'entités, dont 1,6 million d'alertes et 1 million d'incidents annotés avec des étiquettes de triage provenant de clients sur une période de deux semaines. Cette télémétrie a été collectée auprès des clients Microsoft Defender XDR, englobant divers produits tels que des terminaux, des périphériques réseau, des environnements cloud, des systèmes de messagerie, etc.
 (pris dans le site de l'auteur)
@@ -393,9 +371,7 @@ df <- df %>%
     across(where(is.character), as.factor))
 ```
 
-### 2.Analyse exploratoire des données :
-   
-#### 2.1 Visualisations : Diagrammes de comparaison
+### 2. Visualisation
 
 ```{r visualisation-mitre-technique}
 
@@ -685,61 +661,9 @@ Analysons les incidents entre le 1er et le 6 juin afin d'dentifier la cause du p
 **Un approche serait de limiter notre étude aux incidents se produisant entre le 16 mai et le 13 juin,
 pour capter le flux de variation et optimiser le  modèle. Mais nous n'allons pas le faire dans le cadre de ce travail.**
 
-#### 2.2 Test d'hypothèse
+### 3. Apprentissage non supervisé
 
-H0 : la moyenne journalière d’incidents en  juin est la même  que pour tous les mois.
-
-H1 : la moyenne journalière d’incidents en juin est supérieure.
-
-$$\alpha = 0.05 $$
-*Conditions d'application du ttest:*
-
- * les observations sont indépendantes, du fait que les jours sont indépendants
- 
- * On a plus de 30 observation --> la distribution est considérée comme normale
- 
- 
- * homoscédasticité --> On le teste avec le test de Levene
- 
-```{r Homoscedasticité}
-filtered_data <- filtered_data %>%
-  mutate(Month = month(Timestamp, label = TRUE, abbr = FALSE))
-
-monthly_avg <- daily_counts %>%
-  mutate(Month = month(Date, label = TRUE, abbr = FALSE)) %>%
-  group_by(Month) %>%
-  summarise(DailyAvg = mean(Count), .groups = "drop")
-
-
-ttest_data <- daily_counts %>%
-  mutate(Month = month(Date, label = TRUE, abbr = FALSE),
-         Period = ifelse(Month == "juin", "Juin", "Autres mois"))
-ttest_data$Period <- factor(ttest_data$Period)
-
-levene <- leveneTest(Count ~ Period, data = ttest_data)
- cat('p-value :' , levene$`Pr(>F)`[1])
- 
-
-
-```
- *p-value  0.05* Donc les variances ne sont pas égales. 
-
-On va donc appliquer le test de Welch
-
-```{r Welch-t-test}
-
-resultat = t.test(Count ~ Period, data = ttest_data, alternative = "less")
-t_result <- t.test(Count ~ Period, data = ttest_data, alternative = "greater")
-
-print(resultat)
-```
-
-**interprétation :** Le test de Welch a révélé une différence statistiquement significative entre le nombre d'incidents signalés en Juin et les autres mois (p < 0.05). En d'autres termes, les incidents de cybersécurité ont été significativement plus fréquents pendant le mois de juin par rapport aux autres mois de la période étudiée. Cette différence pourrait indiquer une tendance saisonnière ou une concentration d'événements liés à des facteurs spécifiques à cette période.
-
-#### 2.3 Apprentisssage non supervisé.
-
-
-#### Préparation de la base initiale
+#### Pré- traitement
 
 Dans cette session, nous allons dans un premier temps préparer les colonnes da le base des données au complet,
 par la suite nous batirons les différents modèles sur un échantillonage alléatoire de 25 000 observations pour 
@@ -831,7 +755,7 @@ df_encoded <- encode_frequencies(df_plus_10)
 ```
 
 
-```{r reconstitue-data}
+```{r reconstitue-df}
 
 data_traite <- cbind(df_onehot, df_encoded)
 data_traite <- data_traite[, sapply(data_traite, is.numeric)]
@@ -843,15 +767,23 @@ if ("IncidentGrade_negatif" %in% colnames(data_traite)) {
 }
 
 
+if (!is.factor(data_traite$IncidentGrade)) {
+  data_traite$IncidentGrade <- factor(data_traite$IncidentGrade, levels = c(0, 1), labels = c("negatif", "positif"))
+}
+
 # Nettoyage des noms de colonnes pour enlever les espaces
 names(data_traite) <- make.names(names(data_traite))
-data_traite <- data_traite[sapply(data_traite, is.numeric)]
-glimpse(data_traite) 
 
+if (!is.factor(data_traite$IncidentGrade)) {
+  data_traite$IncidentGrade <- factor(data_traite$IncidentGrade)
+}
+
+
+glimpse(data_traite) 
 ```
 
 
-#### 2.3.1 Analyse par composantes principales
+#### 3.1 Analyse par composantes principales.
 
 Comme annoncé, On va maintenant copier 25000 observations de façon aléatoire sur data_traité 
 pour batir notre modèle par la suite 
@@ -864,6 +796,8 @@ sample_n(25000)
 
 
 ```{r PCA}
+#par(mfrow = c(1, 2))
+
 
 pr.out <- prcomp(df_copie, scale = TRUE)
 names(pr.out)
@@ -894,13 +828,10 @@ plot(cumsum(pve), xlab = "Composante Principale",
 
 
 Avec 20 composantes principales, on es capable d'expliquer environ 95% de la variabilité des observations.
-  
 
-#### 2.3.2 : Clustering --> Méthode des k-means
+#### 3.2 : Clustering --> Méthode des k-means
 
 ```{r diagramme-ebouli}
-pr.out <- prcomp(df_copie, scale. = TRUE)
-
 set.seed(2025)
 wss=c()
 for (k in 1:15) {
@@ -941,13 +872,9 @@ qu'il y a trois groupes différents ayant pour taimmes respectives `r km.out$siz
 Il est possibles que ces groupes correspondent aux transaction frauduleuses, non frauduleuses et pas encore classifiées (on ne peut pas encore se prononcer sur la cardinalité de chaque ensemble)
 
 
+### 4.  Apprentissage supervisé
 
-
-     
-
-### 3. Modélisation prédictive.
-
-#### 3.1 Régression logistique :
+#### 4.1 Regression logistique
 
 Cette partie est inspirée de la page suivante : 
 
@@ -958,13 +885,7 @@ colinéarité et prédire 'IncidentGrade_positif' .
 
 
 
-```{r choix-meilleur-modele-logistique-cv, warning=FALSE,include=FALSE}
-#df_copie <- df_copie[sapply(df_copie, is.numeric)]
-
-if (!is.factor(data_traite$IncidentGrade)) {
-  df_copie$IncidentGrade <- factor(df_copie$IncidentGrade, levels = c(0, 1), labels = c("negatif", "positif"))
-}
-
+```{r choix-meilleur-modele-logistique-cv, warning=FALSE}
 
 modele_complet <- glm(IncidentGrade ~ ., data = df_copie, family = binomial)
 modele_nul <- glm(IncidentGrade ~ 1, data = df_copie, family = binomial)
@@ -982,9 +903,8 @@ entrainement <- trainControl(
   repeats = 3,
   savePredictions = TRUE,
   classProbs = TRUE,
-  summaryFunction = defaultSummary 
+  summaryFunction = defaultSummary
 )
-
 
 
 modeles <- list(
@@ -1010,9 +930,7 @@ modeles <- list(
 
 resultats <- resamples(modeles)
 summary(resultats)
-#bwplot(resultats)
-
- 
+bwplot(resultats)
 
 performances <- sapply(modeles, function(x) mean(x$results$Accuracy))
 meilleur_nom <- names(which.max(performances))
@@ -1050,9 +968,7 @@ cat("log(odds) = ",
 
 le code suivant a été inspiré de stack overflow. voici le lien vers la reférence :
 
-**https://stackoverflow.com/questions/71516298/why-is-geom-roc-from-ggplot-vs-plot-roc-giving-such-drastic-difference-in-roc**
-
-
+**https://stackoverflow.com/questions/71516298/why-is-geom-roc-from-ggplot-vs-plot-roc-giving-such-drastic-difference-in-roc** 
 
 ```{r courbe-roc-logistique}
 
@@ -1068,19 +984,14 @@ ggplot() +
   style_roc(theme = theme_minimal) +
   annotate("text", x = 0.75, y = 0.25, 
            label = paste("AUC =", round(auc(roc_obj), 3)))+
-  coord_equal()+
   style_roc()
 
 
 ```
+Interprétation : La courbe est largement au dessus de la diagonale. Ce qui signifie que notre modèle est performent.
 
 
-**Interprétation** : La courbe est largement au dessus de la diagonale. Ce qui signifie que notre modèle est performent.
-
-
-#### 3.2 Arbres de décision
-     
-       
+#### 4.2  Arbre de classification
 
 
 
@@ -1137,10 +1048,9 @@ text(0.6, 0.2, labels = paste("AUC = ", round(auc_value, 2)), col = "red", cex =
 ```
 
 
+### 5 Mise en production.
 
-    
-
-### 4 Mise en production.
+#### 5.1  Choix du modèle
 
 
 
@@ -1149,25 +1059,12 @@ En comparant les courbes ROC des modèles ci-dessus définis, il ressort que l'a
 C'est donc ce modèle que nous allons déployer sur la vrai base de données
 
 
-De façon plus précise, le modèle qui sera deployé en production est le suivant : 
-
-
-```{r modele-retenu}
-
-plot(arbre_elague)
-text(arbre_elague, pretty = 0)
-
-```
-
 
 
 
 
   
-```{r  mise-en-production, include =FALSE}
-if (!is.factor(data_traite$IncidentGrade)) {
-  data_traite$IncidentGrade <- factor(data_traite$IncidentGrade, levels = c(0, 1), labels = c("negatif", "positif"))
-}
+```{r  mise-en-production}
 pred_vrai <- predict(arbre_elague, newdata = data_traite, type = "class")
 
 # Matrice de confusion et précision
@@ -1215,9 +1112,11 @@ Finalement, on peut conclure qu'on a obtenu un Modèle prudent, qui évite de fa
 
 
 
-### 5.   Conclusion
 
-#### 5.1 Quelques recommandations  : 
+
+### 6.   Conclusion
+
+#### 6.1 Quelques recommandations  : 
 
 1. Engager d'avantages des spécialistes en cibersécurité et former le personnel ;
 
@@ -1227,22 +1126,22 @@ Finalement, on peut conclure qu'on a obtenu un Modèle prudent, qui évite de fa
 
 4. Renforcer la surveillance et les mesures de sécurité en été ; 
 
-5. Regarder particulièrement les opérations qui se sont effectuées avec les clés suivantes, dans l'ordre de priorité descandante.
+5. Regarder particulièrement les opérations qui se sont effectuées avec les clés suivantes, dans l'ordre de priorité
+descandante.
 
-```{r operations-suspectes,eval=FALSE, include=FALSE}
-Registry_counts <- data %>%
+```{r operations-suspectes,eval=FALSE}
+Registry_counts <- Database %>%
   count(RegistryKey, name = "Count") %>%
-  filter(Count <= 2) %>%
+  filter(Count <= 2)%>%
   arrange(Count)
 
-transactions_suspectes <- data %>%
+transactions_suspectes <- Database %>%
   filter(RegistryKey %in% Registry_counts$RegistryKey)
 
-transactions_suspectes = transactions_suspectes[,c("RegistryKey", "AlertTitle", "Category", "LastVerdict", "Usage")]%>%
-  head(25) %>%
+transactions_suspectes %>% 
+  select(RegistryKey,AlertTitle, Category,LastVerdict,Usage)%>%
+  head(25)%>%
   kable()
-
-
 #La totalité sera fournies en fichier annexe nommé opérations suspectes
 ```
 
@@ -1261,7 +1160,7 @@ text(0.6, 0.2, labels = paste("AUC = ", round(auc_value, 2)), col = "red", cex =
 
 
 
-#### 5.2 Aller plus loin 
+#### 6.2 Aller plus loin
 
 Pour améliorer la qualité de ce travail, il serait important de se doter d'un super calculateur
 afin de pouvoir bénéficier des différentes ressources qui on conditionné certains de nos choix dans le cadre de ce travail.
@@ -1273,14 +1172,3 @@ ces traitements et de les intégrer dans un pipeline afin d'automatiser les trai
 
 On devrait aussi raffiner d'avantage le modèle, car il laisse passer la moitié des fraudes, ce  qui est très dangeureux. Car  ne pas détecter une fraude est pire que faussement en suspecter une. 
 
-* une façon de régler ce problème : 
-
-Quand on calculait la matrice de confusion, nous avons pris le cutoff par defaut (0.5). On pourait l'optimiser en utilisant par exemple l'indice de youdem qui teste 
-
-**[Youden, W. J. (1950). Index for rating diagnostic tests. Cancer, 3(1), 32–35,**
-
-**PMID: 15405679 DOI: 10.1002/1097-0142(1950)3:1<32::aid-cncr2820030106>3.0.co;2-3]**
-
-* implementation avec r :
-
-**https://stackoverflow.com/questions/73144637/ho-to-make-the-receiver-operating-characteristic-roc-and-identifying-the-youde**
